@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const chromium = require('@sparticuz/chromium');
 
 const SECRET_KEY = 'your-secret-key-change-this'; // In production, use environment variable
 
@@ -95,72 +96,97 @@ function authenticateToken(req, res, next) {
         next();
     });
 }
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
+
+let client;
+
+async function startWhatsAppClient() {
+    let puppeteerConfig = {
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        headless: true
+    };
+
+    if (process.env.NODE_ENV === 'production') {
+        puppeteerConfig = {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
+        };
     }
-});
 
-let isClientReady = false;
-
-client.on('qr', (qr) => {
-    qrcode.toDataURL(qr, (err, url) => {
-        if (err) {
-            console.error('Error generating QR code', err);
-            return;
-        }
-        io.emit('qr', url);
-        io.emit('log', 'QR Code received. Please scan with WhatsApp.');
+    client = new Client({
+        authStrategy: new LocalAuth(),
+        puppeteer: puppeteerConfig
     });
-});
 
-client.on('ready', () => {
-    isClientReady = true;
-    io.emit('ready', true);
-    io.emit('log', 'WhatsApp Client is ready!');
-    console.log('Client is ready!');
-});
-
-client.on('authenticated', () => {
-    io.emit('log', 'Authenticated successfully!');
-    io.emit('qr', null);
-});
-
-client.on('disconnected', (reason) => {
-    io.emit('log', `Client was disconnected: ${reason}`);
-    isClientReady = false;
+    setupClientEvents();
     client.initialize();
-});
+}
 
-client.on('auth_failure', (msg) => {
-    io.emit('log', `Authentication failure: ${msg}`);
-});
+function setupClientEvents() {
+    client.on('qr', (qr) => {
+        qrcode.toDataURL(qr, (err, url) => {
+            if (err) {
+                console.error('Error generating QR code', err);
+                return;
+            }
+            io.emit('qr', url);
+            io.emit('log', 'QR Code received. Please scan with WhatsApp.');
+        });
+    });
 
-client.on('message', async msg => {
-    const contact = await msg.getContact();
-    const name = contact.pushname || contact.number;
-    const phone = contact.number; // e.g., "1234567890"
-    const messageBody = msg.body.toLowerCase();
+    client.on('ready', () => {
+        isClientReady = true;
+        io.emit('ready', true);
+        io.emit('log', 'WhatsApp Client is ready!');
+        console.log('Client is ready!');
+    });
 
-    io.emit('log', `Received message from ${name} (${phone}): ${msg.body}`);
+    client.on('authenticated', () => {
+        io.emit('log', 'Authenticated successfully!');
+        io.emit('qr', null);
+    });
 
-    // Check if this is a lead we are tracking
-    const lead = getLead(phone);
+    client.on('disconnected', (reason) => {
+        io.emit('log', `Client was disconnected: ${reason}`);
+        isClientReady = false;
+        client.destroy().then(() => startWhatsAppClient());
+    });
 
-    if (lead && lead.state === 'CONTACTED') {
-        // Check for "YES" (case-insensitive)
-        const isInterested = messageBody.includes('yes');
+    client.on('auth_failure', (msg) => {
+        io.emit('log', `Authentication failure: ${msg}`);
+    });
 
-        if (isInterested) {
-            io.emit('log', `*** LEAD INTERESTED: ${name} ***`);
-            updateLeadState(phone, 'INTERESTED');
+    client.on('message', async msg => {
+        const contact = await msg.getContact();
+        const name = contact.pushname || contact.number;
+        const phone = contact.number; // e.g., "1234567890"
+        const messageBody = msg.body.toLowerCase();
 
-            // Trigger the "ROI" sequence
-            await sendROIMessage(msg.from, name, phone);
+        io.emit('log', `Received message from ${name} (${phone}): ${msg.body}`);
+
+        // Check if this is a lead we are tracking
+        const lead = getLead(phone);
+
+        if (lead && lead.state === 'CONTACTED') {
+            // Check for "YES" (case-insensitive)
+            const isInterested = messageBody.includes('yes');
+
+            if (isInterested) {
+                io.emit('log', `*** LEAD INTERESTED: ${name} ***`);
+                updateLeadState(phone, 'INTERESTED');
+
+                // Trigger the "ROI" sequence
+                await sendROIMessage(msg.from, name, phone);
+            }
         }
-    }
-});
+    });
+}
+
+// Start the client
+startWhatsAppClient();
+
+
 
 async function sendROIMessage(chatId, name, phone) {
     io.emit('log', `Sending ROI Message to ${name}...`);
@@ -211,7 +237,7 @@ I will be happy to work with you if you are interested.`;
     }
 }
 
-client.initialize();
+
 
 // ... existing code ...
 
