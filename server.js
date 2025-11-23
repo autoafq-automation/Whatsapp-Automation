@@ -127,6 +127,16 @@ client.on('authenticated', () => {
     io.emit('qr', null);
 });
 
+client.on('disconnected', (reason) => {
+    io.emit('log', `Client was disconnected: ${reason}`);
+    isClientReady = false;
+    client.initialize();
+});
+
+client.on('auth_failure', (msg) => {
+    io.emit('log', `Authentication failure: ${msg}`);
+});
+
 client.on('message', async msg => {
     const contact = await msg.getContact();
     const name = contact.pushname || contact.number;
@@ -356,7 +366,14 @@ And if you want to know the ROI or the financial benefits your clinic could get 
     io.emit('log', 'Campaign batch finished!');
 }
 
-const PORT = 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+
+// Only listen if run directly (not imported)
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;
+
