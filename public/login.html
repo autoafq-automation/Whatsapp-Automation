@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - WhatsApp Automation</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .login-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-header h1 {
+            color: #128C7E;
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .btn-primary {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #128C7E;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background-color: #075E54;
+        }
+        .toggle-link {
+            display: block;
+            text-align: center;
+            margin-top: 1rem;
+            color: #128C7E;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        #error-msg {
+            color: red;
+            text-align: center;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <h1>WhatsApp Automation</h1>
+            <p id="page-title">Login to Dashboard</p>
+        </div>
+        <div id="error-msg"></div>
+        <form id="auth-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit" class="btn-primary" id="submit-btn">Login</button>
+        </form>
+        <a class="toggle-link" id="toggle-mode">Need an account? Register</a>
+    </div>
+
+    <script>
+        const form = document.getElementById('auth-form');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const submitBtn = document.getElementById('submit-btn');
+        const toggleLink = document.getElementById('toggle-mode');
+        const pageTitle = document.getElementById('page-title');
+        const errorMsg = document.getElementById('error-msg');
+
+        let isLogin = true;
+
+        // Check if already logged in
+        if (localStorage.getItem('token')) {
+            window.location.href = '/';
+        }
+
+        toggleLink.addEventListener('click', () => {
+            isLogin = !isLogin;
+            if (isLogin) {
+                pageTitle.textContent = 'Login to Dashboard';
+                submitBtn.textContent = 'Login';
+                toggleLink.textContent = 'Need an account? Register';
+            } else {
+                pageTitle.textContent = 'Register New User';
+                submitBtn.textContent = 'Register';
+                toggleLink.textContent = 'Already have an account? Login';
+            }
+            errorMsg.style.display = 'none';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (isLogin) {
+                    if (res.ok) {
+                        const data = await res.json();
+                        localStorage.setItem('token', data.accessToken);
+                        window.location.href = '/';
+                    } else {
+                        const text = await res.text();
+                        showError(text || 'Login failed');
+                    }
+                } else {
+                    if (res.ok) {
+                        alert('Registration successful! Please login.');
+                        // Switch to login mode
+                        toggleLink.click();
+                    } else {
+                        const text = await res.text();
+                        showError(text || 'Registration failed');
+                    }
+                }
+            } catch (err) {
+                showError('Network error');
+            }
+        });
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

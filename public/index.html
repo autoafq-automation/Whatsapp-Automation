@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Automation Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>WhatsApp Automation Dashboard</h1>
+            <div id="status" class="status disconnected">Disconnected</div>
+            <button id="logout-btn" class="secondary-btn" style="margin-left: auto; font-size: 0.8rem;">Logout</button>
+
+        </header>
+
+        <main>
+            <div class="card qr-section">
+                <h2>1. Connect WhatsApp</h2>
+                <div id="qr-container">
+                    <p>Waiting for QR Code...</p>
+                </div>
+                <p class="instruction">Open WhatsApp on your phone > Menu > Linked Devices > Link a Device</p>
+            </div>
+
+            <div class="card stats-section">
+                <h2>Campaign Stats</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <span class="stat-number" id="stat-total">0</span>
+                        <span class="stat-label">Total Leads</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-number" id="stat-contacted">0</span>
+                        <span class="stat-label">Contacted</span>
+                    </div>
+                    <div class="stat-box highlight">
+                        <span class="stat-number" id="stat-interested">0</span>
+                        <span class="stat-label">Interested</span>
+
+                        </header>
+
+                        <main>
+                            <div class="card qr-section">
+                                <h2>1. Connect WhatsApp</h2>
+                                <div id="qr-container">
+                                    <p>Waiting for QR Code...</p>
+                                </div>
+                                <p class="instruction">Open WhatsApp on your phone > Menu > Linked Devices > Link a
+                                    Device</p>
+                            </div>
+
+                            <div class="card stats-section">
+                                <h2>Campaign Stats</h2>
+                                <div class="stats-grid">
+                                    <div class="stat-box">
+                                        <span class="stat-number" id="stat-total">0</span>
+                                        <span class="stat-label">Total Leads</span>
+                                    </div>
+                                    <div class="stat-box">
+                                        <span class="stat-number" id="stat-contacted">0</span>
+                                        <span class="stat-label">Contacted</span>
+                                    </div>
+                                    <div class="stat-box highlight">
+                                        <span class="stat-number" id="stat-interested">0</span>
+                                        <span class="stat-label">Interested</span>
+                                    </div>
+                                    <div class="stat-box">
+                                        <span class="stat-number" id="stat-infosent">0</span>
+                                        <span class="stat-label">Info Sent</span>
+                                    </div>
+                                </div>
+                                <button id="export-btn" class="secondary-btn">
+                                    📥 Export Interested Leads
+                                </button>
+                            </div>
+
+                            <div class="card upload-section">
+                                <h2>2. Upload Leads</h2>
+                                <p>Upload a CSV file with headers: <code>Name</code>, <code>Phone</code></p>
+                                <form id="uploadForm">
+                                    <input type="file" id="leadsFile" accept=".csv" required>
+                                    <button type="submit" id="startBtn" disabled>Start Campaign</button>
+                                </form>
+                            </div>
+
+                            <div class="card logs-section">
+                                <h2>System Logs</h2>
+                                <div id="logs" class="logs-container">
+                                    <!-- Logs will appear here -->
+                                </div>
+                            </div>
+                        </main>
+                    </div>
+
+                    <script src="/socket.io/socket.io.js"></script>
+                    <script>
+                        const socket = io();
+                        const qrContainer = document.getElementById('qr-container');
+                        const statusDiv = document.getElementById('status');
+                        const logsDiv = document.getElementById('logs');
+                        const startBtn = document.getElementById('startBtn');
+                        const uploadForm = document.getElementById('uploadForm');
+                        const logoutBtn = document.getElementById('logout-btn');
+
+                        // Auth Check
+                        const token = localStorage.getItem('token');
+                        if (!token) {
+                            window.location.href = '/login.html';
+                        }
+
+                        logoutBtn.addEventListener('click', () => {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login.html';
+                        });
+
+                        function addLog(message) {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'log-entry';
+                            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                            logsDiv.appendChild(logEntry);
+                            logsDiv.scrollTop = logsDiv.scrollHeight;
+                        }
+
+                        socket.on('qr', (url) => {
+                            if (url) {
+                                qrContainer.innerHTML = `<img src="${url}" alt="QR Code">`;
+                                statusDiv.textContent = 'Scan QR Code';
+                                statusDiv.className = 'status waiting';
+                            } else {
+                                qrContainer.innerHTML = '<p>QR Code Cleared</p>';
+                            }
+                        });
+
+                        socket.on('ready', () => {
+                            qrContainer.innerHTML = '<div class="success-icon">✅</div><p>Connected!</p>';
+                            statusDiv.textContent = 'Connected';
+                            statusDiv.className = 'status connected';
+                            startBtn.disabled = false;
+                        });
+
+                        socket.on('log', (msg) => {
+                            addLog(msg);
+                        });
+
+                        uploadForm.addEventListener('submit', async (e) => {
+                            e.preventDefault();
+                            const fileInput = document.getElementById('leadsFile');
+                            const file = fileInput.files[0];
+
+                            if (!file) return;
+
+                            const formData = new FormData();
+                            formData.append('leads', file);
+
+                            addLog('Uploading leads and starting campaign...');
+                            startBtn.disabled = true;
+
+                            try {
+                                const response = await fetch('/api/start-campaign', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`
+                                    },
+                                    body: formData
+                                });
+                                const result = await response.json();
+                                if (response.ok) {
+                                    addLog(result.message);
+                                } else {
+                                    addLog('Error: ' + result.error);
+                                    startBtn.disabled = false;
+                                }
+                            } catch (err) {
+                                addLog('Error: ' + err.message);
+                                startBtn.disabled = false;
+                            }
+                        });
+
+                        async function updateStats() {
+                            try {
+                                const res = await fetch('/api/stats', {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (res.status === 401 || res.status === 403) {
+                                    // Token invalid or expired
+                                    localStorage.removeItem('token');
+                                    window.location.href = '/login.html';
+                                    return;
+                                }
+                                const data = await res.json();
+                                document.getElementById('stat-total').textContent = data.total;
+                                document.getElementById('stat-contacted').textContent = data.contacted;
+                                document.getElementById('stat-interested').textContent = data.interested;
+                                document.getElementById('stat-infosent').textContent = data.infoSent;
+                            } catch (e) {
+                                console.error('Failed to fetch stats');
+                            }
+                        }
+
+                        // Poll stats every 5 seconds
+                        setInterval(updateStats, 5000);
+                        updateStats();
+
+                        document.getElementById('export-btn').addEventListener('click', async () => {
+                            try {
+                                const res = await fetch('/api/export-interested', {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (res.ok) {
+                                    const blob = await res.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'interested_leads.csv';
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+                                } else {
+                                    alert('Failed to export');
+                                }
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        });
+                    </script>
+</body>
+
+</html>
